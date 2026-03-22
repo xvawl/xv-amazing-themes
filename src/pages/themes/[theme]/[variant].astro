@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import CodeEditor from "../../../components/code-editor.astro";
 import { contrastRatio, wcagBadge } from "../../../lib/colors";
 import { flattenHexRoles, getAllThemes, getThemeVariant, getThemeVariantPaths } from "../../../lib/theme-model";
 
@@ -39,13 +40,6 @@ const badge = wcagBadge(ratio);
 const semanticSwatches = flattenHexRoles(semanticResolved, "");
 const variantOptions = Object.keys(themeRecord?.variants ?? {});
 
-const sampleCode = `function tint(base, accent) {
-  return { bg: base, fg: accent };
-}
-
-// keyword  string  function  number
-if (enabled) render("flexoki");`;
-
 const snippetByLanguage = {
   javascript: `const palette = { background: theme.editor.background };\nrenderPreview(palette);`,
   python: `theme = {"background": editor_bg, "foreground": editor_fg}\nprint(theme["background"])`,
@@ -53,6 +47,11 @@ const snippetByLanguage = {
   yaml: `editor:\n  background: "$palette.base.paper"\n  foreground: "$palette.base.black"`,
 };
 const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [entry.key, entry.value]));
+const showcaseThemeSetup = Object.fromEntries(
+  semanticSwatches
+    .filter((entry) => typeof entry.value === "string")
+    .map((entry) => [entry.key, entry.value]),
+);
 ---
 <BaseLayout title={`${theme} (${variant})`}>
   {!v ? (
@@ -82,21 +81,7 @@ const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [en
         </div>
         <div class="bd">
           <div class="two">
-            <div id="playground-shell" class="sample" style={`background: ${editorBg ?? "#ffffff"}; color: ${editorFg ?? "#111111"};`}>
-              <div class="toolbar">
-                <span class="bubble"></span><span class="bubble"></span><span class="bubble"></span>
-                <span class="pill mono" style="margin-left: auto;">editor</span>
-              </div>
-              <div style="display:flex; gap:8px; padding: 8px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.10);">
-                <button class="lang-btn" data-lang="javascript">JavaScript</button>
-                <button class="lang-btn" data-lang="python">Python</button>
-                <button class="lang-btn" data-lang="rust">Rust</button>
-                <button class="lang-btn" data-lang="yaml">YAML</button>
-              </div>
-              <pre id="snippet-pre">
-<code id="snippet-code">{sampleCode}</code>
-              </pre>
-            </div>
+            <CodeEditor themeSetup={showcaseThemeSetup} snippets={snippetByLanguage} />
             <div class="card" style="box-shadow: none; background: rgba(255,255,255,0.55);">
               <div class="bd">
                 <div class="kicker">Contrast smoke test</div>
@@ -240,19 +225,15 @@ const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [en
     type="application/json"
     id="playground-theme-json"
     set:html={JSON.stringify({
-      snippetByLanguage,
       semantic: initialPlayground,
     })}
   />
   <script>
     const payloadElement = document.getElementById("playground-theme-json");
     const payload = payloadElement ? JSON.parse(payloadElement.textContent || "{}") : {};
-    const snippetByLanguage = payload.snippetByLanguage || {};
     const state = { ...payload.semantic };
 
-    const shell = document.getElementById("playground-shell");
-    const snippetCode = document.getElementById("snippet-code");
-    const langButtons = document.querySelectorAll(".lang-btn");
+    const showcase = document.querySelector("[data-code-editor]");
     const colorInputs = document.querySelectorAll("input[data-role]");
     const textInputs = document.querySelectorAll("input[data-role-text]");
 
@@ -270,25 +251,16 @@ const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [en
     };
 
     function applyPreviewVariables() {
-      if (!shell) return;
+      if (!showcase) return;
       for (const [role, value] of Object.entries(state)) {
         const cssVariable = roleToCssVariable[role];
         if (!cssVariable) continue;
-        shell.style.setProperty(cssVariable, value);
+        showcase.style.setProperty(cssVariable, value);
       }
       const bg = state["editor.background"];
       const fg = state["editor.foreground"];
-      if (typeof bg === "string") shell.style.background = bg;
-      if (typeof fg === "string") shell.style.color = fg;
-    }
-
-    function setLanguage(language) {
-      if (!snippetCode || !snippetByLanguage[language]) return;
-      snippetCode.textContent = snippetByLanguage[language];
-      for (const button of langButtons) {
-        const active = button.dataset.lang === language;
-        button.classList.toggle("is-active", active);
-      }
+      if (typeof bg === "string") showcase.style.background = bg;
+      if (typeof fg === "string") showcase.style.color = fg;
     }
 
     for (const input of colorInputs) {
@@ -315,11 +287,6 @@ const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [en
       });
     }
 
-    for (const button of langButtons) {
-      button.addEventListener("click", () => setLanguage(button.dataset.lang || "javascript"));
-    }
-
-    setLanguage("javascript");
     applyPreviewVariables();
   </script>
 </BaseLayout>
