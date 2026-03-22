@@ -1,0 +1,29 @@
+---
+import "../styles/global.css";
+const { title, description } = Astro.props;
+const homeHref = import.meta.env.BASE_URL;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description ?? "A theme lab for previewing palettes + semantic roles."} />
+    <title>{title ?? "Amazing Themes"}</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <div class="brand"><a href={homeHref}>Amazing Themes</a></div>
+          <div class="tagline">Preview palettes and semantic roles from `themes/*.yml`, then export to tools.</div>
+        </div>
+        <div class="pill">
+          <span class="dot" style="background: rgba(32, 94, 166, 0.6)"></span>
+          <span class="mono">Theme Lab</span>
+        </div>
+      </div>
+      <slot />
+    </div>
+  </body>
+</html>

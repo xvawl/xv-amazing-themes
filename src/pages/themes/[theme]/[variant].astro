@@ -1,0 +1,325 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { contrastRatio, wcagBadge } from "../../../lib/colors";
+import { flattenHexRoles, getAllThemes, getThemeVariant, getThemeVariantPaths } from "../../../lib/theme-model";
+
+export function getStaticPaths() {
+  return getThemeVariantPaths().map((item) => ({ params: item }));
+}
+
+const { theme, variant } = Astro.params;
+const v = theme && variant ? getThemeVariant(theme, variant) : null;
+const themeRecord = theme ? getAllThemes().find((entry) => entry.name === theme) : null;
+const baseUrl = import.meta.env.BASE_URL;
+const toBase = (path: string) => `${baseUrl}${path.replace(/^\//, "")}`;
+
+const palette = v?.palette ?? {};
+const base = palette.base ?? {};
+const accent = palette.accent ?? {};
+
+function flattenSwatches(obj: any, prefix = ""): { name: string; hex: string }[] {
+  const out: { name: string; hex: string }[] = [];
+  if (!obj || typeof obj !== "object") return out;
+  for (const [k, val] of Object.entries(obj)) {
+    const name = prefix ? `${prefix}.${k}` : k;
+    if (typeof val === "string") out.push({ name, hex: val });
+    else out.push(...flattenSwatches(val, name));
+  }
+  return out;
+}
+
+const swatchesBase = flattenSwatches(base, "base").filter((item) => /^#[0-9a-fA-F]{6}$/.test(item.hex));
+const swatchesAccent = flattenSwatches(accent, "accent").filter((item) => /^#[0-9a-fA-F]{6}$/.test(item.hex));
+
+const semanticResolved = v?.semanticResolved ?? {};
+const editorBg = semanticResolved?.editor?.background ?? null;
+const editorFg = semanticResolved?.editor?.foreground ?? null;
+const ratio = typeof editorBg === "string" && typeof editorFg === "string" ? contrastRatio(editorFg, editorBg) : null;
+const badge = wcagBadge(ratio);
+const semanticSwatches = flattenHexRoles(semanticResolved, "");
+const variantOptions = Object.keys(themeRecord?.variants ?? {});
+
+const sampleCode = `function tint(base, accent) {
+  return { bg: base, fg: accent };
+}
+
+// keyword  string  function  number
+if (enabled) render("flexoki");`;
+
+const snippetByLanguage = {
+  javascript: `const palette = { background: theme.editor.background };\nrenderPreview(palette);`,
+  python: `theme = {"background": editor_bg, "foreground": editor_fg}\nprint(theme["background"])`,
+  rust: `let theme = Theme::new(editor_bg, editor_fg);\nprintln!("{}", theme.background);`,
+  yaml: `editor:\n  background: "$palette.base.paper"\n  foreground: "$palette.base.black"`,
+};
+const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [entry.key, entry.value]));
+---
+<BaseLayout title={`${theme} (${variant})`}>
+  {!v ? (
+    <div class="card">
+      <div class="bd">
+        <div class="kicker">Not found</div>
+        <div class="title">Theme variant missing</div>
+        <p class="tagline">Check that this variant exists in `themes/{theme}/{variant}.yml`.</p>
+      </div>
+    </div>
+  ) : (
+    <div class="grid">
+      <div class="card" style="grid-column: span 12;">
+        <div class="hd">
+          <div>
+            <div class="kicker">Theme</div>
+            <div class="title">{theme} <span class="mono">({variant})</span></div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+            {variantOptions.map((vv) => (
+              <a class="pill" href={toBase(`/themes/${theme}/${vv}/`)}>{vv}</a>
+            ))}
+            <a class="pill mono" href={toBase(`/downloads/${theme}/${variant}/itermcolors.xml`)}>iTerm2 XML</a>
+            <a class="pill mono" href={toBase(`/downloads/${theme}/${variant}/vscode.json`)}>VS Code JSON</a>
+            <a class="pill mono" href={toBase("/")}>All themes</a>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="two">
+            <div id="playground-shell" class="sample" style={`background: ${editorBg ?? "#ffffff"}; color: ${editorFg ?? "#111111"};`}>
+              <div class="toolbar">
+                <span class="bubble"></span><span class="bubble"></span><span class="bubble"></span>
+                <span class="pill mono" style="margin-left: auto;">editor</span>
+              </div>
+              <div style="display:flex; gap:8px; padding: 8px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.10);">
+                <button class="lang-btn" data-lang="javascript">JavaScript</button>
+                <button class="lang-btn" data-lang="python">Python</button>
+                <button class="lang-btn" data-lang="rust">Rust</button>
+                <button class="lang-btn" data-lang="yaml">YAML</button>
+              </div>
+              <pre id="snippet-pre">
+<code id="snippet-code">{sampleCode}</code>
+              </pre>
+            </div>
+            <div class="card" style="box-shadow: none; background: rgba(255,255,255,0.55);">
+              <div class="bd">
+                <div class="kicker">Contrast smoke test</div>
+                <div class="title">Editor fg/bg</div>
+                <div style="margin-top: 10px;">
+                  <div class="ratio">
+                    <span class={`badge ${badge.kind}`}>{badge.label}</span>
+                    <span class="mono">{String(editorFg ?? "n/a")} / {String(editorBg ?? "n/a")}</span>
+                  </div>
+                  <p class="tagline" style="margin-top: 10px;">
+                    This is a quick check to catch obvious problems while you tinker.
+                    Download links are generated from the same model used here.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="hd">
+          <div>
+            <div class="kicker">Playground</div>
+            <div class="title">Tinker semantic roles</div>
+          </div>
+          <div class="pill mono">client-side draft only</div>
+        </div>
+        <div class="bd">
+          <div class="controls-grid">
+            {semanticSwatches.map((entry) => (
+              <label class="control-row">
+                <span class="mono">{entry.key}</span>
+                <input
+                  class="color-input"
+                  type="color"
+                  data-role={entry.key}
+                  value={entry.value}
+                />
+                <input
+                  class="hex-input mono"
+                  type="text"
+                  data-role-text={entry.key}
+                  value={entry.value}
+                  pattern="^#[0-9a-fA-F]{6}$"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="hd">
+          <div>
+            <div class="kicker">Palette</div>
+            <div class="title">Base scale</div>
+          </div>
+          <div class="pill mono">{swatchesBase.length} tokens</div>
+        </div>
+        <div class="bd">
+          <div class="swatches">
+            {swatchesBase.map((s) => (
+              <div class="swatch">
+                <div class="chip" style={`background: ${s.hex};`}></div>
+                <div class="meta">
+                  <div class="name">
+                    <span class="mono">{s.name}</span>
+                    <span class="hex">{s.hex}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="hd">
+          <div>
+            <div class="kicker">Palette</div>
+            <div class="title">Accents</div>
+          </div>
+          <div class="pill mono">{swatchesAccent.length} tokens</div>
+        </div>
+        <div class="bd">
+          <div class="swatches">
+            {swatchesAccent.map((s) => (
+              <div class="swatch">
+                <div class="chip" style={`background: ${s.hex};`}></div>
+                <div class="meta">
+                  <div class="name">
+                    <span class="mono">{s.name}</span>
+                    <span class="hex">{s.hex}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="hd">
+          <div>
+            <div class="kicker">Semantic</div>
+            <div class="title">Resolved roles (source of truth)</div>
+          </div>
+          <div class="pill mono">from `semanticResolved`</div>
+        </div>
+        <div class="bd">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Value</th>
+                <th>Preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flattenSwatches(semanticResolved, "").map((r) => (
+                <tr>
+                  <td class="mono">{r.name}</td>
+                  <td class="mono">{r.hex}</td>
+                  <td>
+                    <span class="pill">
+                      <span class="dot" style={`background: ${r.hex};`}></span>
+                      <span>chip</span>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
+
+  <script
+    type="application/json"
+    id="playground-theme-json"
+    set:html={JSON.stringify({
+      snippetByLanguage,
+      semantic: initialPlayground,
+    })}
+  />
+  <script>
+    const payloadElement = document.getElementById("playground-theme-json");
+    const payload = payloadElement ? JSON.parse(payloadElement.textContent || "{}") : {};
+    const snippetByLanguage = payload.snippetByLanguage || {};
+    const state = { ...payload.semantic };
+
+    const shell = document.getElementById("playground-shell");
+    const snippetCode = document.getElementById("snippet-code");
+    const langButtons = document.querySelectorAll(".lang-btn");
+    const colorInputs = document.querySelectorAll("input[data-role]");
+    const textInputs = document.querySelectorAll("input[data-role-text]");
+
+    const roleToCssVariable = {
+      "editor.background": "--preview-editor-bg",
+      "editor.foreground": "--preview-editor-fg",
+      "ui.panelBackground": "--preview-panel-bg",
+      "ui.subtleText": "--preview-subtle",
+      "syntax.keyword": "--preview-keyword",
+      "syntax.string": "--preview-string",
+      "syntax.function": "--preview-function",
+      "syntax.number": "--preview-number",
+      "syntax.variable": "--preview-variable",
+      "syntax.error": "--preview-error",
+    };
+
+    function applyPreviewVariables() {
+      if (!shell) return;
+      for (const [role, value] of Object.entries(state)) {
+        const cssVariable = roleToCssVariable[role];
+        if (!cssVariable) continue;
+        shell.style.setProperty(cssVariable, value);
+      }
+      const bg = state["editor.background"];
+      const fg = state["editor.foreground"];
+      if (typeof bg === "string") shell.style.background = bg;
+      if (typeof fg === "string") shell.style.color = fg;
+    }
+
+    function setLanguage(language) {
+      if (!snippetCode || !snippetByLanguage[language]) return;
+      snippetCode.textContent = snippetByLanguage[language];
+      for (const button of langButtons) {
+        const active = button.dataset.lang === language;
+        button.classList.toggle("is-active", active);
+      }
+    }
+
+    for (const input of colorInputs) {
+      input.addEventListener("input", (event) => {
+        const role = event.currentTarget?.dataset?.role;
+        if (!role) return;
+        const value = event.currentTarget.value;
+        state[role] = value;
+        const textInput = document.querySelector(`input[data-role-text="${role}"]`);
+        if (textInput) textInput.value = value;
+        applyPreviewVariables();
+      });
+    }
+
+    for (const input of textInputs) {
+      input.addEventListener("change", (event) => {
+        const role = event.currentTarget?.dataset?.roleText;
+        const value = event.currentTarget?.value;
+        if (!role || !/^#[0-9a-fA-F]{6}$/.test(value || "")) return;
+        state[role] = value;
+        const colorInput = document.querySelector(`input[data-role="${role}"]`);
+        if (colorInput) colorInput.value = value;
+        applyPreviewVariables();
+      });
+    }
+
+    for (const button of langButtons) {
+      button.addEventListener("click", () => setLanguage(button.dataset.lang || "javascript"));
+    }
+
+    setLanguage("javascript");
+    applyPreviewVariables();
+  </script>
+</BaseLayout>

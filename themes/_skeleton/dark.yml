@@ -1,0 +1,30 @@
+# Skeleton theme (dark)
+#
+# Keep token names consistent with light.yml so cross-variant mapping is easy.
+
+meta:
+  name: skeleton
+  variant: dark
+  author: you
+
+palette:
+  bg0: "#0b0f14" # Primary background
+  bg1: "#121823" # Elevated background / panels
+
+  fg0: "#e6edf3" # Primary text
+  fg1: "#9da7b3" # Secondary text
+
+  blue: "#4f8cff" # Links, info accents
+  red: "#ff5c5c"  # Errors
+
+semantic:
+  editor:
+    background: "$palette.bg0"
+    foreground: "$palette.fg0"
+  ui:
+    panelBackground: "$palette.bg1"
+    subtleText: "$palette.fg1"
+  diagnostics:
+    error: "$palette.red"
+    info: "$palette.blue"
+

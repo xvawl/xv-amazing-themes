@@ -1,0 +1,40 @@
+# Skeleton theme (light)
+#
+# This file is intentionally small: it shows the pattern, not a finished palette.
+# Recommended approach:
+# - Define palette tokens (physical colors)
+# - Define semantic roles (meaning)
+#
+# Notes:
+# - YAML is used so we can keep inline commentary.
+# - Pick a single hex notation style and stick with it (e.g. "#RRGGBB").
+
+meta:
+  name: skeleton
+  variant: light
+  author: you
+
+palette:
+  # Base surfaces (backgrounds)
+  bg0: "#ffffff" # Primary background
+  bg1: "#f6f6f6" # Elevated background / panels
+
+  # Base text (foregrounds)
+  fg0: "#111111" # Primary text
+  fg1: "#444444" # Secondary text
+
+  # Accents
+  blue: "#2f6feb" # Links, info accents
+  red: "#d1242f"  # Errors
+
+semantic:
+  editor:
+    background: "$palette.bg0"
+    foreground: "$palette.fg0"
+  ui:
+    panelBackground: "$palette.bg1"
+    subtleText: "$palette.fg1"
+  diagnostics:
+    error: "$palette.red"
+    info: "$palette.blue"
+
