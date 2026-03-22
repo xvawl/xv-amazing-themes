@@ -1,0 +1,89 @@
+# Flexoki (dark)
+#
+# Source: https://github.com/kepano/flexoki (MIT)
+# Homepage: https://stephango.com/flexoki
+#
+# This file captures the upstream palette in a comment-friendly YAML form.
+# The palette tokens stay identical across variants; the semantic layer changes.
+
+meta:
+  name: flexoki
+  variant: dark
+  upstream:
+    author: "Steph Ango"
+    homepage: "https://stephango.com/flexoki"
+    repo: "https://github.com/kepano/flexoki"
+    license: "MIT"
+    palette: "standard (base + accent 400/600)"
+
+palette:
+  base:
+    # Lightest to darkest.
+    paper: "#FFFCF0"
+    "50": "#F2F0E5"
+    "100": "#E6E4D9"
+    "150": "#DAD8CE"
+    "200": "#CECDC3"
+    "300": "#B7B5AC"
+    "400": "#9F9D96"
+    "500": "#878580"
+    "600": "#6F6E69"
+    "700": "#575653"
+    "800": "#403E3C"
+    "850": "#343331"
+    "900": "#282726"
+    "950": "#1C1B1A"
+    black: "#100F0F" # Canonical dark background / deepest ink surface.
+
+  accent:
+    # Accent guidance (upstream):
+    # - 400 series: lighter accents optimized for dark backgrounds.
+    # - 600 series: darker accents optimized for light backgrounds.
+    red:
+      "400": "#D14D41"
+      "600": "#AF3029"
+    orange:
+      "400": "#DA702C"
+      "600": "#BC5215"
+    yellow:
+      "400": "#D0A215"
+      "600": "#AD8301"
+    green:
+      "400": "#879A39"
+      "600": "#66800B"
+    cyan:
+      "400": "#3AA99F"
+      "600": "#24837B"
+    blue:
+      "400": "#4385BE"
+      "600": "#205EA6"
+    purple:
+      "400": "#8B7EC8"
+      "600": "#5E409D"
+    magenta:
+      "400": "#CE5D97"
+      "600": "#A02F6F"
+
+semantic:
+  editor:
+    background: "$palette.base.black"
+    foreground: "$palette.base.paper"
+
+  ui:
+    # Suggested starting points for dark surfaces:
+    # - panels: 950-900
+    # - borders: 850-800
+    # - subtle text: 400-500
+    panelBackground: "$palette.base.950"
+    border: "$palette.base.850"
+    subtleText: "$palette.base.400"
+
+  syntax:
+    # For dark variant, prefer 400 accents for foreground syntax tokens.
+    keyword: "$palette.accent.green.400"
+    string: "$palette.accent.cyan.400"
+    function: "$palette.accent.orange.400"
+    number: "$palette.accent.purple.400"
+    variable: "$palette.accent.blue.400"
+    constant: "$palette.accent.yellow.400"
+    error: "$palette.accent.red.400"
