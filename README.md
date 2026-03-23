@@ -120,3 +120,5 @@ Example:
 
 The workflow in `.github/workflows/pages.yml` builds and deploys `dist/`.
 Set GitHub Pages source to **GitHub Actions** in repository settings.
+For Pages builds, the workflow sets `ASTRO_BASE="/<repo-name>/"` so asset URLs resolve under the repo subpath instead of the domain root.
+Do not set this for normal local development: `astro dev` runs at the root of `http://localhost:4321/`, so leaving `ASTRO_BASE` unset locally is correct.

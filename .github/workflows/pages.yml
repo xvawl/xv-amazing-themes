@@ -34,6 +34,7 @@ jobs:
 
       - name: Build site
         env:
+          # GitHub Pages serves this site from /<repo-name>/, not the domain root.
           ASTRO_BASE: "/${{ github.event.repository.name }}/"
         run: pnpm run build
 
