@@ -215,15 +215,18 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
 
     function setLanguage(lang: string) {
       if (!snippets[lang]) return;
-      // Save current content before switching
+      // Snapshot the current content before leaving this language
       codeByLang.set(currentLang, view.state.doc.toString());
       const content = codeByLang.get(lang) ?? snippets[lang];
+      // ⚠️ Must update currentLang BEFORE view.dispatch — the updateListener
+      // fires synchronously inside dispatch, and must see the NEW lang so it
+      // saves incoming content to the correct key instead of overwriting the old one.
+      currentLang  = lang;
+      lastLanguage = lang;
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: content },
         effects: langCompartment.reconfigure(langs[lang] || []),
       });
-      currentLang  = lang;
-      lastLanguage = lang;
       for (const btn of langBtns) {
         btn.classList.toggle("is-active", btn.dataset.langBtn === lang);
       }
