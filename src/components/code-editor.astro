@@ -3,8 +3,8 @@ type ThemeSetup = Record<string, string>;
 type SnippetMap  = Record<string, string>;
 
 interface Props {
-  themeSetup:      ThemeSetup;
-  snippets:        SnippetMap;
+  themeSetup:       ThemeSetup;
+  snippets:         SnippetMap;
   initialLanguage?: string;
   label?:           string;
 }
@@ -32,20 +32,21 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
     set:html={JSON.stringify({ snippets, semantic: themeSetup, initialLanguage })}
   />
 
-  <!-- Window chrome toolbar -->
+  <!-- Window chrome -->
   <div class="toolbar">
     <span class="bubble"></span>
     <span class="bubble"></span>
     <span class="bubble"></span>
   </div>
 
-  <!-- Language switcher -->
+  <!-- Language bar -->
   <div class="ce-lang-bar">
     {languageEntries.map(([language]) => (
       <button class="lang-btn" data-lang-btn={language}>
         {language[0]?.toUpperCase()}{language.slice(1)}
       </button>
     ))}
+    <button class="ce-reset-btn" data-reset-btn title="Reset to default snippets">↺ reset</button>
     <span class="ce-label">{label}</span>
   </div>
 
@@ -54,9 +55,20 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
 </div>
 
 <script>
-  let codeEditorRuntime: Promise<any> | null = null;
+  // ─── Module-level state ─────────────────────────────────────────────────────
+  // Persists across client-side navigations (ES module is cached).
+  // Cleared on full page refresh — that's the user's "undo".
 
-  const roleToCssVariable: Record<string, string> = {
+  let runtime: Promise<any> | null = null;
+
+  // code content per language, shared across all theme pages
+  const codeByLang = new Map<string, string>();
+  // last active language, restored on next navigation
+  let lastLanguage = "";
+
+  // ─── CSS var mapping ────────────────────────────────────────────────────────
+
+  const roleToCss: Record<string, string> = {
     "editor.background":  "--preview-editor-bg",
     "editor.foreground":  "--preview-editor-fg",
     "ui.panelBackground": "--preview-panel-bg",
@@ -69,10 +81,11 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
     "syntax.error":       "--preview-error",
   };
 
-  async function loadCodeEditorRuntime() {
-    if (codeEditorRuntime) return codeEditorRuntime;
+  // ─── Load CodeMirror (once, then cached) ────────────────────────────────────
 
-    codeEditorRuntime = Promise.all([
+  async function loadRuntime() {
+    if (runtime) return runtime;
+    runtime = Promise.all([
       import("codemirror"),
       import("@codemirror/state"),
       import("@codemirror/view"),
@@ -82,28 +95,18 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
       import("@codemirror/lang-rust"),
       import("@codemirror/lang-yaml"),
       import("@lezer/highlight"),
-    ]).then(([
-      codemirror,
-      stateModule,
-      viewModule,
-      languageModule,
-      javascriptModule,
-      pythonModule,
-      rustModule,
-      yamlModule,
-      highlightModule,
-    ]) => {
-      const { basicSetup }                    = codemirror;
-      const { EditorState, Compartment }      = stateModule;
-      const { EditorView }                    = viewModule;
-      const { syntaxHighlighting, HighlightStyle } = languageModule;
-      const { javascript }                    = javascriptModule;
-      const { python }                        = pythonModule;
-      const { rust }                          = rustModule;
-      const { yaml }                          = yamlModule;
-      const { tags }                          = highlightModule;
+    ]).then(([cm, stateM, viewM, langM, jsM, pyM, rsM, yamlM, hlM]) => {
+      const { basicSetup }                         = cm;
+      const { EditorState, Compartment }           = stateM;
+      const { EditorView }                         = viewM;
+      const { syntaxHighlighting, HighlightStyle } = langM;
+      const { javascript }                         = jsM;
+      const { python }                             = pyM;
+      const { rust }                               = rsM;
+      const { yaml }                               = yamlM;
+      const { tags }                               = hlM;
 
-      const languageExtensions: Record<string, any> = {
+      const langs: Record<string, any> = {
         javascript: javascript(),
         python:     python(),
         rust:       rust(),
@@ -118,30 +121,18 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
           fontFamily:      "var(--font-mono, ui-monospace, monospace)",
           fontSize:        "14px",
         },
-        ".cm-editor": {
-          height:          "100%",
-          backgroundColor: "var(--preview-editor-bg)",
-        },
-        ".cm-scroller": {
-          fontFamily: "inherit",
-          lineHeight:  "1.6",
-          overflow:    "auto",
-        },
+        ".cm-editor":  { height: "100%", backgroundColor: "var(--preview-editor-bg)" },
+        ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", overflow: "auto" },
         ".cm-gutters": {
           backgroundColor: "var(--preview-panel-bg, var(--preview-editor-bg))",
           color:           "var(--preview-subtle, var(--preview-editor-fg))",
           border:          "none",
           opacity:         "0.6",
         },
-        ".cm-content": {
-          caretColor: "var(--preview-editor-fg)",
-          padding:    "14px 16px",
-        },
+        ".cm-content":          { caretColor: "var(--preview-editor-fg)", padding: "14px 16px" },
         ".cm-activeLineGutter": { backgroundColor: "transparent" },
         ".cm-activeLine":       { backgroundColor: "transparent" },
-        ".cm-cursor, .cm-dropCursor": {
-          borderLeftColor: "var(--preview-editor-fg)",
-        },
+        ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--preview-editor-fg)" },
         ".cm-selectionBackground, ::selection": {
           backgroundColor: "var(--preview-panel-bg, rgba(127,127,127,0.2))",
         },
@@ -150,39 +141,48 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
 
       const highlightTheme = syntaxHighlighting(
         HighlightStyle.define([
-          { tag: [tags.keyword, tags.modifier, tags.operatorKeyword],             color: "var(--preview-keyword)" },
-          { tag: [tags.string, tags.special(tags.string)],                        color: "var(--preview-string)"  },
+          { tag: [tags.keyword, tags.modifier, tags.operatorKeyword],               color: "var(--preview-keyword)"  },
+          { tag: [tags.string, tags.special(tags.string)],                          color: "var(--preview-string)"   },
           { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--preview-function)" },
-          { tag: [tags.number, tags.integer, tags.float, tags.bool],              color: "var(--preview-number)"  },
-          { tag: [tags.variableName, tags.propertyName, tags.attributeName],      color: "var(--preview-variable)"},
-          { tag: [tags.invalid, tags.deleted],                                    color: "var(--preview-error)"   },
+          { tag: [tags.number, tags.integer, tags.float, tags.bool],                color: "var(--preview-number)"   },
+          { tag: [tags.variableName, tags.propertyName, tags.attributeName],        color: "var(--preview-variable)" },
+          { tag: [tags.invalid, tags.deleted],                                      color: "var(--preview-error)"    },
         ])
       );
 
-      return { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, languageExtensions };
+      return { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, langs };
     });
-
-    return codeEditorRuntime;
+    return runtime;
   }
 
-  async function initCodeEditor(editor: Element) {
-    if ((editor as HTMLElement).dataset.codeEditorReady === "true") return;
-    (editor as HTMLElement).dataset.codeEditorReady = "true";
+  // ─── Init one editor instance ───────────────────────────────────────────────
 
-    const payloadElement = editor.querySelector("[data-code-editor-payload]");
-    const payload = payloadElement ? JSON.parse(payloadElement.textContent || "{}") : {};
-    const snippets       = payload.snippets || {};
-    const state          = { ...(payload.semantic || {}) };
-    const mount          = editor.querySelector("[data-editor-mount]") as HTMLElement | null;
-    const langButtons    = editor.querySelectorAll<HTMLElement>("[data-lang-btn]");
-    const initialLang    = payload.initialLanguage || "javascript";
+  async function initCodeEditor(editor: Element) {
+    // Clear stale ready flag (element may be new DOM node after navigation)
+    const el = editor as HTMLElement;
+
+    // Already initialized in this DOM instance
+    if (el.dataset.codeEditorReady === "true") return;
+    el.dataset.codeEditorReady = "true";
+
+    const payloadEl = editor.querySelector("[data-code-editor-payload]");
+    const payload   = payloadEl ? JSON.parse(payloadEl.textContent || "{}") : {};
+    const snippets: Record<string, string> = payload.snippets || {};
+    const semantic: Record<string, string> = payload.semantic || {};
+    const defaultLang = payload.initialLanguage || "javascript";
+    const mount       = editor.querySelector("[data-editor-mount]") as HTMLElement | null;
+    const langBtns    = editor.querySelectorAll<HTMLElement>("[data-lang-btn]");
+    const resetBtn    = editor.querySelector<HTMLElement>("[data-reset-btn]");
     if (!mount) return;
 
-    const { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, languageExtensions }
-      = await loadCodeEditorRuntime();
+    // Restore last used language, fall back to default
+    let currentLang = (lastLanguage && snippets[lastLanguage]) ? lastLanguage : defaultLang;
 
-    const languageCompartment = new Compartment();
-    const initialDoc = snippets[initialLang] || Object.values(snippets)[0] || "";
+    const { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, langs }
+      = await loadRuntime();
+
+    const langCompartment = new Compartment();
+    const initialDoc = codeByLang.get(currentLang) ?? snippets[currentLang] ?? "";
 
     const view = new EditorView({
       state: EditorState.create({
@@ -192,41 +192,66 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
           editorTheme,
           highlightTheme,
           EditorView.lineWrapping,
-          languageCompartment.of(languageExtensions[initialLang] || []),
+          langCompartment.of(langs[currentLang] || []),
+          // Auto-save content to module-level Map on every keystroke
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              codeByLang.set(currentLang, view.state.doc.toString());
+            }
+          }),
         ],
       }),
       parent: mount,
     });
 
-    function applyPreviewVariables() {
-      for (const [role, value] of Object.entries(state)) {
-        const cssVar = roleToCssVariable[role];
-        if (cssVar) (editor as HTMLElement).style.setProperty(cssVar, value as string);
+    function applyColors() {
+      for (const [role, value] of Object.entries(semantic)) {
+        const cssVar = roleToCss[role];
+        if (cssVar) el.style.setProperty(cssVar, value);
       }
-      const bg = state["editor.background"];
-      const fg = state["editor.foreground"];
-      if (typeof bg === "string") (editor as HTMLElement).style.background = bg;
-      if (typeof fg === "string") (editor as HTMLElement).style.color = fg;
+      if (semantic["editor.background"]) el.style.background = semantic["editor.background"];
+      if (semantic["editor.foreground"]) el.style.color      = semantic["editor.foreground"];
     }
 
-    function setLanguage(language: string) {
-      if (!snippets[language]) return;
+    function setLanguage(lang: string) {
+      if (!snippets[lang]) return;
+      // Save current content before switching
+      codeByLang.set(currentLang, view.state.doc.toString());
+      const content = codeByLang.get(lang) ?? snippets[lang];
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: snippets[language] },
-        effects: languageCompartment.reconfigure(languageExtensions[language] || []),
+        changes: { from: 0, to: view.state.doc.length, insert: content },
+        effects: langCompartment.reconfigure(langs[lang] || []),
       });
-      for (const button of langButtons) {
-        button.classList.toggle("is-active", button.dataset.langBtn === language);
+      currentLang  = lang;
+      lastLanguage = lang;
+      for (const btn of langBtns) {
+        btn.classList.toggle("is-active", btn.dataset.langBtn === lang);
       }
     }
 
-    for (const button of langButtons) {
-      button.addEventListener("click", () => setLanguage(button.dataset.langBtn || initialLang));
+    for (const btn of langBtns) {
+      btn.addEventListener("click", () => setLanguage(btn.dataset.langBtn || defaultLang));
     }
 
-    setLanguage(initialLang);
-    applyPreviewVariables();
+    // Reset: clear all saved content and restore default snippet
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        codeByLang.clear();
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: snippets[currentLang] ?? "" },
+        });
+      });
+    }
+
+    setLanguage(currentLang);
+    applyColors();
   }
 
-  document.querySelectorAll("[data-code-editor]").forEach(initCodeEditor);
+  // ─── Re-run after every client-side navigation ──────────────────────────────
+  // astro:page-load fires on initial load AND after every ViewTransition.
+  // ES module is cached, so this listener is registered exactly once.
+
+  document.addEventListener("astro:page-load", () => {
+    document.querySelectorAll("[data-code-editor]").forEach(initCodeEditor);
+  });
 </script>

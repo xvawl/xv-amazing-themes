@@ -422,14 +422,6 @@ const showcaseThemeSetup = Object.fromEntries(
     set:html={JSON.stringify({ semantic: initialPlayground })}
   />
   <script>
-    const payloadEl = document.getElementById("playground-theme-json");
-    const payload = payloadEl ? JSON.parse(payloadEl.textContent || "{}") : {};
-    const state = { ...payload.semantic };
-
-    const showcase = document.querySelector("[data-code-editor]");
-    const colorInputs = document.querySelectorAll<HTMLInputElement>("input[data-role]");
-    const textInputs  = document.querySelectorAll<HTMLInputElement>("input[data-role-text]");
-
     const roleToCss: Record<string, string> = {
       "editor.background":   "--preview-editor-bg",
       "editor.foreground":   "--preview-editor-fg",
@@ -443,41 +435,52 @@ const showcaseThemeSetup = Object.fromEntries(
       "syntax.error":        "--preview-error",
     };
 
-    function applyPreview() {
-      if (!showcase) return;
-      for (const [role, value] of Object.entries(state)) {
-        const cssVar = roleToCss[role];
-        if (cssVar) (showcase as HTMLElement).style.setProperty(cssVar, value as string);
+    // Re-run on every navigation — DOM elements are fresh after each ViewTransition
+    document.addEventListener("astro:page-load", () => {
+      const payloadEl = document.getElementById("playground-theme-json");
+      if (!payloadEl) return; // not on a theme page
+
+      const payload = JSON.parse(payloadEl.textContent || "{}");
+      const state   = { ...payload.semantic } as Record<string, string>;
+
+      const showcase    = document.querySelector<HTMLElement>("[data-code-editor]");
+      const colorInputs = document.querySelectorAll<HTMLInputElement>("input[data-role]");
+      const textInputs  = document.querySelectorAll<HTMLInputElement>("input[data-role-text]");
+
+      function applyPreview() {
+        if (!showcase) return;
+        for (const [role, value] of Object.entries(state)) {
+          const cssVar = roleToCss[role];
+          if (cssVar) showcase.style.setProperty(cssVar, value);
+        }
+        if (state["editor.background"]) showcase.style.background = state["editor.background"];
+        if (state["editor.foreground"]) showcase.style.color      = state["editor.foreground"];
       }
-      const bg = state["editor.background"];
-      const fg = state["editor.foreground"];
-      if (typeof bg === "string") (showcase as HTMLElement).style.background = bg;
-      if (typeof fg === "string") (showcase as HTMLElement).style.color = fg;
-    }
 
-    for (const input of colorInputs) {
-      input.addEventListener("input", () => {
-        const role = input.dataset.role;
-        if (!role) return;
-        state[role] = input.value;
-        const txt = document.querySelector<HTMLInputElement>(`input[data-role-text="${role}"]`);
-        if (txt) txt.value = input.value;
-        applyPreview();
-      });
-    }
+      for (const input of colorInputs) {
+        input.addEventListener("input", () => {
+          const role = input.dataset.role;
+          if (!role) return;
+          state[role] = input.value;
+          const txt = document.querySelector<HTMLInputElement>(`input[data-role-text="${role}"]`);
+          if (txt) txt.value = input.value;
+          applyPreview();
+        });
+      }
 
-    for (const input of textInputs) {
-      input.addEventListener("change", () => {
-        const role = input.dataset.roleText;
-        const val  = input.value;
-        if (!role || !/^#[0-9a-fA-F]{6}$/.test(val)) return;
-        state[role] = val;
-        const col = document.querySelector<HTMLInputElement>(`input[data-role="${role}"]`);
-        if (col) col.value = val;
-        applyPreview();
-      });
-    }
+      for (const input of textInputs) {
+        input.addEventListener("change", () => {
+          const role = input.dataset.roleText;
+          const val  = input.value;
+          if (!role || !/^#[0-9a-fA-F]{6}$/.test(val)) return;
+          state[role] = val;
+          const col = document.querySelector<HTMLInputElement>(`input[data-role="${role}"]`);
+          if (col) col.value = val;
+          applyPreview();
+        });
+      }
 
-    applyPreview();
+      applyPreview();
+    });
   </script>
 </BaseLayout>
