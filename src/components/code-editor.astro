@@ -1,12 +1,12 @@
 ---
 type ThemeSetup = Record<string, string>;
-type SnippetMap = Record<string, string>;
+type SnippetMap  = Record<string, string>;
 
 interface Props {
-  themeSetup: ThemeSetup;
-  snippets: SnippetMap;
+  themeSetup:      ThemeSetup;
+  snippets:        SnippetMap;
   initialLanguage?: string;
-  label?: string;
+  label?:           string;
 }
 
 const {
@@ -17,7 +17,6 @@ const {
 } = Astro.props;
 
 const languageEntries = Object.entries(snippets);
-
 const editorBg = themeSetup["editor.background"] ?? "#ffffff";
 const editorFg = themeSetup["editor.foreground"] ?? "#111111";
 ---
@@ -30,41 +29,44 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
   <script
     type="application/json"
     data-code-editor-payload
-    set:html={JSON.stringify({
-      snippets,
-      semantic: themeSetup,
-      initialLanguage,
-    })}
+    set:html={JSON.stringify({ snippets, semantic: themeSetup, initialLanguage })}
   />
+
+  <!-- Window chrome toolbar -->
   <div class="toolbar">
-    <span class="bubble"></span><span class="bubble"></span><span class="bubble"></span>
-    <span class="pill mono" style="margin-left: auto;">{label}</span>
+    <span class="bubble"></span>
+    <span class="bubble"></span>
+    <span class="bubble"></span>
   </div>
-  <div style="display:flex; gap:8px; padding: 8px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.10);">
+
+  <!-- Language switcher -->
+  <div class="ce-lang-bar">
     {languageEntries.map(([language]) => (
-      <button class="lang-btn" data-lang-btn={language}>{language[0]?.toUpperCase()}{language.slice(1)}</button>
+      <button class="lang-btn" data-lang-btn={language}>
+        {language[0]?.toUpperCase()}{language.slice(1)}
+      </button>
     ))}
+    <span class="ce-label">{label}</span>
   </div>
-  <div
-    data-editor-mount
-    style="min-height: 160px;"
-  ></div>
+
+  <!-- CodeMirror mount -->
+  <div data-editor-mount></div>
 </div>
 
 <script>
-  let codeEditorRuntime;
+  let codeEditorRuntime: Promise<any> | null = null;
 
-  const roleToCssVariable = {
-    "editor.background": "--preview-editor-bg",
-    "editor.foreground": "--preview-editor-fg",
+  const roleToCssVariable: Record<string, string> = {
+    "editor.background":  "--preview-editor-bg",
+    "editor.foreground":  "--preview-editor-fg",
     "ui.panelBackground": "--preview-panel-bg",
-    "ui.subtleText": "--preview-subtle",
-    "syntax.keyword": "--preview-keyword",
-    "syntax.string": "--preview-string",
-    "syntax.function": "--preview-function",
-    "syntax.number": "--preview-number",
-    "syntax.variable": "--preview-variable",
-    "syntax.error": "--preview-error",
+    "ui.subtleText":      "--preview-subtle",
+    "syntax.keyword":     "--preview-keyword",
+    "syntax.string":      "--preview-string",
+    "syntax.function":    "--preview-function",
+    "syntax.number":      "--preview-number",
+    "syntax.variable":    "--preview-variable",
+    "syntax.error":       "--preview-error",
   };
 
   async function loadCodeEditorRuntime() {
@@ -91,114 +93,96 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
       yamlModule,
       highlightModule,
     ]) => {
-      const { basicSetup } = codemirror;
-      const { EditorState, Compartment } = stateModule;
-      const { EditorView } = viewModule;
+      const { basicSetup }                    = codemirror;
+      const { EditorState, Compartment }      = stateModule;
+      const { EditorView }                    = viewModule;
       const { syntaxHighlighting, HighlightStyle } = languageModule;
-      const { javascript } = javascriptModule;
-      const { python } = pythonModule;
-      const { rust } = rustModule;
-      const { yaml } = yamlModule;
-      const { tags } = highlightModule;
+      const { javascript }                    = javascriptModule;
+      const { python }                        = pythonModule;
+      const { rust }                          = rustModule;
+      const { yaml }                          = yamlModule;
+      const { tags }                          = highlightModule;
 
-      const languageExtensions = {
+      const languageExtensions: Record<string, any> = {
         javascript: javascript(),
-        python: python(),
-        rust: rust(),
-        yaml: yaml(),
+        python:     python(),
+        rust:       rust(),
+        yaml:       yaml(),
       };
 
       const editorTheme = EditorView.theme({
         "&": {
+          height:          "100%",
           backgroundColor: "var(--preview-editor-bg)",
-          color: "var(--preview-editor-fg)",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
-          fontSize: "13px",
+          color:           "var(--preview-editor-fg)",
+          fontFamily:      "var(--font-mono, ui-monospace, monospace)",
+          fontSize:        "14px",
         },
         ".cm-editor": {
+          height:          "100%",
           backgroundColor: "var(--preview-editor-bg)",
         },
         ".cm-scroller": {
           fontFamily: "inherit",
-          lineHeight: "1.55",
+          lineHeight:  "1.6",
+          overflow:    "auto",
         },
         ".cm-gutters": {
           backgroundColor: "var(--preview-panel-bg, var(--preview-editor-bg))",
-          color: "var(--preview-subtle, var(--preview-editor-fg))",
-          border: "none",
+          color:           "var(--preview-subtle, var(--preview-editor-fg))",
+          border:          "none",
+          opacity:         "0.6",
         },
         ".cm-content": {
           caretColor: "var(--preview-editor-fg)",
-          minHeight: "160px",
-          padding: "16px",
+          padding:    "14px 16px",
         },
-        ".cm-activeLineGutter": {
-          backgroundColor: "transparent",
-        },
-        ".cm-activeLine": {
-          backgroundColor: "transparent",
-        },
+        ".cm-activeLineGutter": { backgroundColor: "transparent" },
+        ".cm-activeLine":       { backgroundColor: "transparent" },
         ".cm-cursor, .cm-dropCursor": {
           borderLeftColor: "var(--preview-editor-fg)",
         },
         ".cm-selectionBackground, ::selection": {
-          backgroundColor: "var(--preview-panel-bg, rgba(127, 127, 127, 0.2))",
+          backgroundColor: "var(--preview-panel-bg, rgba(127,127,127,0.2))",
         },
-        "&.cm-focused": {
-          outline: "none",
-        },
+        "&.cm-focused": { outline: "none" },
       });
 
       const highlightTheme = syntaxHighlighting(
         HighlightStyle.define([
-          { tag: [tags.keyword, tags.modifier, tags.operatorKeyword], color: "var(--preview-keyword)" },
-          { tag: [tags.string, tags.special(tags.string)], color: "var(--preview-string)" },
+          { tag: [tags.keyword, tags.modifier, tags.operatorKeyword],             color: "var(--preview-keyword)" },
+          { tag: [tags.string, tags.special(tags.string)],                        color: "var(--preview-string)"  },
           { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--preview-function)" },
-          { tag: [tags.number, tags.integer, tags.float, tags.bool], color: "var(--preview-number)" },
-          { tag: [tags.variableName, tags.propertyName, tags.attributeName], color: "var(--preview-variable)" },
-          { tag: [tags.invalid, tags.deleted], color: "var(--preview-error)" },
-        ]),
+          { tag: [tags.number, tags.integer, tags.float, tags.bool],              color: "var(--preview-number)"  },
+          { tag: [tags.variableName, tags.propertyName, tags.attributeName],      color: "var(--preview-variable)"},
+          { tag: [tags.invalid, tags.deleted],                                    color: "var(--preview-error)"   },
+        ])
       );
 
-      return {
-        EditorState,
-        EditorView,
-        Compartment,
-        basicSetup,
-        editorTheme,
-        highlightTheme,
-        languageExtensions,
-      };
+      return { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, languageExtensions };
     });
 
     return codeEditorRuntime;
   }
 
-  async function initCodeEditor(editor) {
-    if (editor.dataset.codeEditorReady === "true") return;
-    editor.dataset.codeEditorReady = "true";
+  async function initCodeEditor(editor: Element) {
+    if ((editor as HTMLElement).dataset.codeEditorReady === "true") return;
+    (editor as HTMLElement).dataset.codeEditorReady = "true";
 
     const payloadElement = editor.querySelector("[data-code-editor-payload]");
     const payload = payloadElement ? JSON.parse(payloadElement.textContent || "{}") : {};
-    const snippets = payload.snippets || {};
-    const state = { ...(payload.semantic || {}) };
-    const mount = editor.querySelector("[data-editor-mount]");
-    const langButtons = editor.querySelectorAll("[data-lang-btn]");
-    const initialLanguage = payload.initialLanguage || "javascript";
+    const snippets       = payload.snippets || {};
+    const state          = { ...(payload.semantic || {}) };
+    const mount          = editor.querySelector("[data-editor-mount]") as HTMLElement | null;
+    const langButtons    = editor.querySelectorAll<HTMLElement>("[data-lang-btn]");
+    const initialLang    = payload.initialLanguage || "javascript";
     if (!mount) return;
 
-    const {
-      EditorState,
-      EditorView,
-      Compartment,
-      basicSetup,
-      editorTheme,
-      highlightTheme,
-      languageExtensions,
-    } = await loadCodeEditorRuntime();
+    const { EditorState, EditorView, Compartment, basicSetup, editorTheme, highlightTheme, languageExtensions }
+      = await loadCodeEditorRuntime();
 
     const languageCompartment = new Compartment();
-    const initialDoc = snippets[initialLanguage] || Object.values(snippets)[0] || "";
+    const initialDoc = snippets[initialLang] || Object.values(snippets)[0] || "";
 
     const view = new EditorView({
       state: EditorState.create({
@@ -208,7 +192,7 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
           editorTheme,
           highlightTheme,
           EditorView.lineWrapping,
-          languageCompartment.of(languageExtensions[initialLanguage] || []),
+          languageCompartment.of(languageExtensions[initialLang] || []),
         ],
       }),
       parent: mount,
@@ -216,40 +200,33 @@ const editorFg = themeSetup["editor.foreground"] ?? "#111111";
 
     function applyPreviewVariables() {
       for (const [role, value] of Object.entries(state)) {
-        const cssVariable = roleToCssVariable[role];
-        if (!cssVariable) continue;
-        editor.style.setProperty(cssVariable, value);
+        const cssVar = roleToCssVariable[role];
+        if (cssVar) (editor as HTMLElement).style.setProperty(cssVar, value as string);
       }
       const bg = state["editor.background"];
       const fg = state["editor.foreground"];
-      if (typeof bg === "string") editor.style.background = bg;
-      if (typeof fg === "string") editor.style.color = fg;
+      if (typeof bg === "string") (editor as HTMLElement).style.background = bg;
+      if (typeof fg === "string") (editor as HTMLElement).style.color = fg;
     }
 
-    function setLanguage(language) {
+    function setLanguage(language: string) {
       if (!snippets[language]) return;
       view.dispatch({
-        changes: {
-          from: 0,
-          to: view.state.doc.length,
-          insert: snippets[language],
-        },
+        changes: { from: 0, to: view.state.doc.length, insert: snippets[language] },
         effects: languageCompartment.reconfigure(languageExtensions[language] || []),
       });
       for (const button of langButtons) {
-        const active = button.dataset.langBtn === language;
-        button.classList.toggle("is-active", active);
+        button.classList.toggle("is-active", button.dataset.langBtn === language);
       }
     }
 
     for (const button of langButtons) {
-      button.addEventListener("click", () => setLanguage(button.dataset.langBtn || initialLanguage));
+      button.addEventListener("click", () => setLanguage(button.dataset.langBtn || initialLang));
     }
 
-    setLanguage(initialLanguage);
+    setLanguage(initialLang);
     applyPreviewVariables();
   }
 
-  const editors = document.querySelectorAll("[data-code-editor]");
-  for (const editor of editors) initCodeEditor(editor);
+  document.querySelectorAll("[data-code-editor]").forEach(initCodeEditor);
 </script>

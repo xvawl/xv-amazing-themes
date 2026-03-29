@@ -29,264 +29,455 @@ function flattenSwatches(obj: any, prefix = ""): { name: string; hex: string }[]
   return out;
 }
 
-const swatchesBase = flattenSwatches(base, "base").filter((item) => /^#[0-9a-fA-F]{6}$/.test(item.hex));
-const swatchesAccent = flattenSwatches(accent, "accent").filter((item) => /^#[0-9a-fA-F]{6}$/.test(item.hex));
+const swatchesBase   = flattenSwatches(base,   "base").filter((s) => /^#[0-9a-fA-F]{6}$/.test(s.hex));
+const swatchesAccent = flattenSwatches(accent, "accent").filter((s) => /^#[0-9a-fA-F]{6}$/.test(s.hex));
 
 const semanticResolved = v?.semanticResolved ?? {};
 const editorBg = semanticResolved?.editor?.background ?? null;
 const editorFg = semanticResolved?.editor?.foreground ?? null;
-const ratio = typeof editorBg === "string" && typeof editorFg === "string" ? contrastRatio(editorFg, editorBg) : null;
+const ratio = typeof editorBg === "string" && typeof editorFg === "string"
+  ? contrastRatio(editorFg, editorBg)
+  : null;
 const badge = wcagBadge(ratio);
 const semanticSwatches = flattenHexRoles(semanticResolved, "");
 const variantOptions = Object.keys(themeRecord?.variants ?? {});
 
 const snippetByLanguage = {
-  javascript: `const palette = { background: theme.editor.background };\nrenderPreview(palette);`,
-  python: `theme = {"background": editor_bg, "foreground": editor_fg}\nprint(theme["background"])`,
-  rust: `let theme = Theme::new(editor_bg, editor_fg);\nprintln!("{}", theme.background);`,
-  yaml: `editor:\n  background: "$palette.base.paper"\n  foreground: "$palette.base.black"`,
+  javascript: `\
+// Color theme utilities
+import { parseHex, relativeLuminance } from "./colors.js";
+
+const WCAG_AA  = 4.5;
+const WCAG_AAA = 7.0;
+
+class Theme {
+  #palette = new Map();
+
+  constructor(name, variant = "light") {
+    this.name    = name;
+    this.variant = variant;
+  }
+
+  set(role, hex) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      throw new Error(\`Invalid hex color: \${hex}\`);
+    }
+    this.#palette.set(role, hex);
+    return this;
+  }
+
+  get(role) {
+    return this.#palette.get(role) ?? null;
+  }
+
+  contrast(fgRole, bgRole) {
+    const lFg = relativeLuminance(this.get(fgRole));
+    const lBg = relativeLuminance(this.get(bgRole));
+    const [hi, lo] = lFg > lBg ? [lFg, lBg] : [lBg, lFg];
+    return (hi + 0.05) / (lo + 0.05);
+  }
+}
+
+export function loadTheme(path) {
+  const raw  = fs.readFileSync(path, "utf-8");
+  const data = parseYaml(raw);
+  const t    = new Theme(data.meta.name, data.meta.variant);
+  for (const [role, hex] of Object.entries(data.semantic)) {
+    t.set(role, hex);
+  }
+  return t;
+}`,
+
+  python: `\
+# Color palette utilities
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional
+import re, yaml
+
+HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+WCAG_AA  = 4.5
+WCAG_AAA = 7.0
+
+
+@dataclass
+class Theme:
+    name:    str
+    variant: str
+    palette: dict[str, str] = field(default_factory=dict)
+
+    def set_color(self, role: str, hex_value: str) -> "Theme":
+        if not HEX_RE.match(hex_value):
+            raise ValueError(f"Invalid hex color: {hex_value!r}")
+        self.palette[role] = hex_value
+        return self
+
+    def get_color(self, role: str) -> Optional[str]:
+        return self.palette.get(role)
+
+    def contrast_ratio(self, fg: str, bg: str) -> float:
+        lum_fg = relative_luminance(self.palette[fg])
+        lum_bg = relative_luminance(self.palette[bg])
+        hi, lo = sorted([lum_fg, lum_bg], reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    def wcag_level(self, fg: str, bg: str) -> str:
+        ratio = self.contrast_ratio(fg, bg)
+        if ratio >= WCAG_AAA:
+            return "AAA"
+        elif ratio >= WCAG_AA:
+            return "AA"
+        return "fail"
+
+
+def load_theme(path: str) -> Theme:
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    t = Theme(name=data["meta"]["name"], variant=data["meta"]["variant"])
+    for role, hex_val in data.get("semantic", {}).items():
+        t.set_color(role, hex_val)
+    return t`,
+
+  rust: `\
+use std::collections::HashMap;
+
+const WCAG_AA:  f64 = 4.5;
+const WCAG_AAA: f64 = 7.0;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Variant { Light, Dark }
+
+#[derive(Debug, Clone)]
+pub struct Theme {
+    pub name:    String,
+    pub variant: Variant,
+    palette:     HashMap<String, String>,
+}
+
+impl Theme {
+    pub fn new(name: &str, variant: Variant) -> Self {
+        Self {
+            name: name.to_string(),
+            variant,
+            palette: HashMap::new(),
+        }
+    }
+
+    pub fn set(&mut self, role: &str, hex: &str) -> &mut Self {
+        self.palette.insert(role.to_string(), hex.to_string());
+        self
+    }
+
+    pub fn get(&self, role: &str) -> Option<&str> {
+        self.palette.get(role).map(String::as_str)
+    }
+
+    pub fn contrast(&self, fg: &str, bg: &str) -> f64 {
+        let lum_fg = relative_luminance(self.get(fg).unwrap_or("#000000"));
+        let lum_bg = relative_luminance(self.get(bg).unwrap_or("#ffffff"));
+        let (hi, lo) = if lum_fg > lum_bg {
+            (lum_fg, lum_bg)
+        } else {
+            (lum_bg, lum_fg)
+        };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    pub fn wcag_level(&self, fg: &str, bg: &str) -> &'static str {
+        match self.contrast(fg, bg) {
+            r if r >= WCAG_AAA => "AAA",
+            r if r >= WCAG_AA  => "AA",
+            _                  => "fail",
+        }
+    }
+}`,
+
+  yaml: `\
+meta:
+  name: flexoki
+  variant: light
+  author: "Steph Ango"
+  upstream:
+    homepage: "https://stephango.com/flexoki"
+    license: MIT
+
+palette:
+  base:
+    paper:  "#FFFCF0"
+    "50":   "#F2F0E5"
+    "100":  "#E6E4D9"
+    "200":  "#DAD8CE"
+    "300":  "#CECDC3"
+    "600":  "#6F6E69"
+    "700":  "#575653"
+    black:  "#100F0F"
+  accent:
+    red:
+      "400": "#D14D41"
+      "600": "#AF3029"
+    orange:
+      "400": "#DA702C"
+      "600": "#BC5215"
+    green:
+      "400": "#879A39"
+      "600": "#66800B"
+    cyan:
+      "400": "#3AA99F"
+      "600": "#24837B"
+    blue:
+      "400": "#4385BE"
+      "600": "#205EA6"
+
+semantic:
+  editor:
+    background: "$palette.base.paper"
+    foreground: "$palette.base.black"
+  ui:
+    panelBackground: "$palette.base.50"
+    border:          "$palette.base.200"
+    subtleText:      "$palette.base.600"
+  syntax:
+    keyword:  "$palette.accent.green.600"
+    string:   "$palette.accent.cyan.600"
+    function: "$palette.accent.orange.600"
+    number:   "$palette.accent.purple.600"
+    variable: "$palette.accent.blue.600"
+    error:    "$palette.accent.red.600"`,
 };
-const initialPlayground = Object.fromEntries(semanticSwatches.map((entry) => [entry.key, entry.value]));
+
+const initialPlayground = Object.fromEntries(semanticSwatches.map((e) => [e.key, e.value]));
 const showcaseThemeSetup = Object.fromEntries(
   semanticSwatches
-    .filter((entry) => typeof entry.value === "string")
-    .map((entry) => [entry.key, entry.value]),
+    .filter((e) => typeof e.value === "string")
+    .map((e) => [e.key, e.value])
 );
 ---
-<BaseLayout title={`${theme} (${variant})`}>
+<BaseLayout title={`${theme} · ${variant}`} wideHeader={true}>
   {!v ? (
-    <div class="card">
-      <div class="bd">
-        <div class="kicker">Not found</div>
-        <div class="title">Theme variant missing</div>
-        <p class="tagline">Check that this variant exists in `themes/{theme}/{variant}.yml`.</p>
-      </div>
+    <div style="padding: 40px 24px; font-family: var(--font-mono); font-size: 14px; color: var(--text-2);">
+      Theme variant not found: <code>{theme}/{variant}</code>
     </div>
   ) : (
-    <div class="grid">
-      <div class="card" style="grid-column: span 12;">
-        <div class="hd">
-          <div>
-            <div class="kicker">Theme</div>
-            <div class="title">{theme} <span class="mono">({variant})</span></div>
-          </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+    <div class="detail-container" transition:name={`theme-card-${theme}-${variant}`}>
+
+      <!-- Nav bar -->
+      <div class="detail-nav">
+        <a class="detail-back" href={toBase("/")}>← all themes</a>
+        <span class="detail-crumb">/</span>
+        <span class="detail-theme-label">{theme}</span>
+        <div class="detail-nav-right">
+          <div class="variant-switcher">
             {variantOptions.map((vv) => (
-              <a class="pill" href={toBase(`/themes/${theme}/${vv}/`)}>{vv}</a>
+              <a
+                class={`vsw-btn${vv === variant ? " active" : ""}`}
+                href={toBase(`/themes/${theme}/${vv}/`)}
+              >{vv}</a>
             ))}
-            <a class="pill mono" href={toBase(`/downloads/${theme}/${variant}/itermcolors.xml`)}>iTerm2 XML</a>
-            <a class="pill mono" href={toBase(`/downloads/${theme}/${variant}/vscode.json`)}>VS Code JSON</a>
-            <a class="pill mono" href={toBase("/")}>All themes</a>
           </div>
         </div>
-        <div class="bd">
-          <div class="two">
-            <CodeEditor themeSetup={showcaseThemeSetup} snippets={snippetByLanguage} />
-            <div class="card" style="box-shadow: none; background: rgba(255,255,255,0.55);">
-              <div class="bd">
-                <div class="kicker">Contrast smoke test</div>
-                <div class="title">Editor fg/bg</div>
-                <div style="margin-top: 10px;">
-                  <div class="ratio">
-                    <span class={`badge ${badge.kind}`}>{badge.label}</span>
-                    <span class="mono">{String(editorFg ?? "n/a")} / {String(editorBg ?? "n/a")}</span>
-                  </div>
-                  <p class="tagline" style="margin-top: 10px;">
-                    This is a quick check to catch obvious problems while you tinker.
-                    Download links are generated from the same model used here.
-                  </p>
-                </div>
-              </div>
+      </div>
+
+      <!-- Two-panel layout -->
+      <div class="detail-panels">
+
+        <!-- LEFT: code editor -->
+        <div class="editor-panel">
+          <CodeEditor themeSetup={showcaseThemeSetup} snippets={snippetByLanguage} />
+        </div>
+
+        <!-- RIGHT: info panel -->
+        <div class="info-panel">
+
+          <!-- Exports (sticky) -->
+          <div class="panel-section-sticky">
+            <div class="section-hd">
+              <span class="section-label">Export</span>
+            </div>
+            <div class="export-links">
+              <a class="export-link" href={toBase(`/downloads/${theme}/${variant}/vscode.json`)}>
+                <span>VS Code JSON</span>
+                <span class="export-arrow">↓</span>
+              </a>
+              <a class="export-link" href={toBase(`/downloads/${theme}/${variant}/itermcolors.xml`)}>
+                <span>iTerm2 XML</span>
+                <span class="export-arrow">↓</span>
+              </a>
+            </div>
+          </div><!-- /panel-section-sticky -->
+
+          <!-- Contrast -->
+          <div class="panel-section">
+            <div class="section-hd">
+              <span class="section-label">Contrast</span>
+              <span class={`badge ${badge.kind}`}>{badge.label}</span>
+            </div>
+            <div class="contrast-row">
+              <span class="contrast-pair">
+                {String(editorFg ?? "n/a")} on {String(editorBg ?? "n/a")}
+              </span>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="card" style="grid-column: span 12;">
-        <div class="hd">
-          <div>
-            <div class="kicker">Playground</div>
-            <div class="title">Tinker semantic roles</div>
-          </div>
-          <div class="pill mono">client-side draft only</div>
-        </div>
-        <div class="bd">
-          <div class="controls-grid">
-            {semanticSwatches.map((entry) => (
-              <label class="control-row">
-                <span class="mono">{entry.key}</span>
-                <input
-                  class="color-input"
-                  type="color"
-                  data-role={entry.key}
-                  value={entry.value}
-                />
-                <input
-                  class="hex-input mono"
-                  type="text"
-                  data-role-text={entry.key}
-                  value={entry.value}
-                  pattern="^#[0-9a-fA-F]{6}$"
-                />
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="grid-column: span 12;">
-        <div class="hd">
-          <div>
-            <div class="kicker">Palette</div>
-            <div class="title">Base scale</div>
-          </div>
-          <div class="pill mono">{swatchesBase.length} tokens</div>
-        </div>
-        <div class="bd">
-          <div class="swatches">
-            {swatchesBase.map((s) => (
-              <div class="swatch">
-                <div class="chip" style={`background: ${s.hex};`}></div>
-                <div class="meta">
-                  <div class="name">
-                    <span class="mono">{s.name}</span>
-                    <span class="hex">{s.hex}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="grid-column: span 12;">
-        <div class="hd">
-          <div>
-            <div class="kicker">Palette</div>
-            <div class="title">Accents</div>
-          </div>
-          <div class="pill mono">{swatchesAccent.length} tokens</div>
-        </div>
-        <div class="bd">
-          <div class="swatches">
-            {swatchesAccent.map((s) => (
-              <div class="swatch">
-                <div class="chip" style={`background: ${s.hex};`}></div>
-                <div class="meta">
-                  <div class="name">
-                    <span class="mono">{s.name}</span>
-                    <span class="hex">{s.hex}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="grid-column: span 12;">
-        <div class="hd">
-          <div>
-            <div class="kicker">Semantic</div>
-            <div class="title">Resolved roles (source of truth)</div>
-          </div>
-          <div class="pill mono">from `semanticResolved`</div>
-        </div>
-        <div class="bd">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Value</th>
-                <th>Preview</th>
-              </tr>
-            </thead>
-            <tbody>
-              {flattenSwatches(semanticResolved, "").map((r) => (
-                <tr>
-                  <td class="mono">{r.name}</td>
-                  <td class="mono">{r.hex}</td>
-                  <td>
-                    <span class="pill">
-                      <span class="dot" style={`background: ${r.hex};`}></span>
-                      <span>chip</span>
-                    </span>
-                  </td>
-                </tr>
+          <!-- Playground -->
+          <div class="panel-section">
+            <div class="section-hd">
+              <span class="section-label">Playground</span>
+              <span class="section-count">draft only</span>
+            </div>
+            <div class="controls-list">
+              {semanticSwatches.map((entry) => (
+                <label class="control-row">
+                  <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{entry.key}</span>
+                  <input
+                    class="color-input"
+                    type="color"
+                    data-role={entry.key}
+                    value={entry.value}
+                  />
+                  <input
+                    class="hex-input"
+                    type="text"
+                    data-role-text={entry.key}
+                    value={entry.value}
+                    pattern="^#[0-9a-fA-F]{6}$"
+                  />
+                </label>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+            </div>
+          </div>
+
+          <!-- Base palette -->
+          <div class="panel-section">
+            <div class="section-hd">
+              <span class="section-label">Base</span>
+              <span class="section-count">{swatchesBase.length} tokens</span>
+            </div>
+            <div class="swatch-grid">
+              {swatchesBase.map((s) => (
+                <div class="swatch-item">
+                  <div class="swatch-chip" style={`background: ${s.hex};`}></div>
+                  <div class="swatch-meta">
+                    <span class="swatch-name">{s.name.replace("base.", "")}</span>
+                    <span class="swatch-hex">{s.hex}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <!-- Accent palette -->
+          <div class="panel-section">
+            <div class="section-hd">
+              <span class="section-label">Accents</span>
+              <span class="section-count">{swatchesAccent.length} tokens</span>
+            </div>
+            <div class="swatch-grid">
+              {swatchesAccent.map((s) => (
+                <div class="swatch-item">
+                  <div class="swatch-chip" style={`background: ${s.hex};`}></div>
+                  <div class="swatch-meta">
+                    <span class="swatch-name">{s.name.replace("accent.", "")}</span>
+                    <span class="swatch-hex">{s.hex}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <!-- Semantic roles -->
+          <div class="panel-section">
+            <div class="section-hd">
+              <span class="section-label">Semantic roles</span>
+              <span class="section-count">{semanticSwatches.length} resolved</span>
+            </div>
+            <table class="sem-table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {flattenSwatches(semanticResolved, "").map((r) => (
+                  <tr>
+                    <td>{r.name}</td>
+                    <td>
+                      <span class="color-chip-inline" style={`background: ${r.hex};`}></span>
+                      {r.hex}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+        </div><!-- /info-panel -->
+      </div><!-- /detail-panels -->
+    </div><!-- /detail-container -->
   )}
 
   <script
     type="application/json"
     id="playground-theme-json"
-    set:html={JSON.stringify({
-      semantic: initialPlayground,
-    })}
+    set:html={JSON.stringify({ semantic: initialPlayground })}
   />
   <script>
-    const payloadElement = document.getElementById("playground-theme-json");
-    const payload = payloadElement ? JSON.parse(payloadElement.textContent || "{}") : {};
+    const payloadEl = document.getElementById("playground-theme-json");
+    const payload = payloadEl ? JSON.parse(payloadEl.textContent || "{}") : {};
     const state = { ...payload.semantic };
 
     const showcase = document.querySelector("[data-code-editor]");
-    const colorInputs = document.querySelectorAll("input[data-role]");
-    const textInputs = document.querySelectorAll("input[data-role-text]");
+    const colorInputs = document.querySelectorAll<HTMLInputElement>("input[data-role]");
+    const textInputs  = document.querySelectorAll<HTMLInputElement>("input[data-role-text]");
 
-    const roleToCssVariable = {
-      "editor.background": "--preview-editor-bg",
-      "editor.foreground": "--preview-editor-fg",
-      "ui.panelBackground": "--preview-panel-bg",
-      "ui.subtleText": "--preview-subtle",
-      "syntax.keyword": "--preview-keyword",
-      "syntax.string": "--preview-string",
-      "syntax.function": "--preview-function",
-      "syntax.number": "--preview-number",
-      "syntax.variable": "--preview-variable",
-      "syntax.error": "--preview-error",
+    const roleToCss: Record<string, string> = {
+      "editor.background":   "--preview-editor-bg",
+      "editor.foreground":   "--preview-editor-fg",
+      "ui.panelBackground":  "--preview-panel-bg",
+      "ui.subtleText":       "--preview-subtle",
+      "syntax.keyword":      "--preview-keyword",
+      "syntax.string":       "--preview-string",
+      "syntax.function":     "--preview-function",
+      "syntax.number":       "--preview-number",
+      "syntax.variable":     "--preview-variable",
+      "syntax.error":        "--preview-error",
     };
 
-    function applyPreviewVariables() {
+    function applyPreview() {
       if (!showcase) return;
       for (const [role, value] of Object.entries(state)) {
-        const cssVariable = roleToCssVariable[role];
-        if (!cssVariable) continue;
-        showcase.style.setProperty(cssVariable, value);
+        const cssVar = roleToCss[role];
+        if (cssVar) (showcase as HTMLElement).style.setProperty(cssVar, value as string);
       }
       const bg = state["editor.background"];
       const fg = state["editor.foreground"];
-      if (typeof bg === "string") showcase.style.background = bg;
-      if (typeof fg === "string") showcase.style.color = fg;
+      if (typeof bg === "string") (showcase as HTMLElement).style.background = bg;
+      if (typeof fg === "string") (showcase as HTMLElement).style.color = fg;
     }
 
     for (const input of colorInputs) {
-      input.addEventListener("input", (event) => {
-        const role = event.currentTarget?.dataset?.role;
+      input.addEventListener("input", () => {
+        const role = input.dataset.role;
         if (!role) return;
-        const value = event.currentTarget.value;
-        state[role] = value;
-        const textInput = document.querySelector(`input[data-role-text="${role}"]`);
-        if (textInput) textInput.value = value;
-        applyPreviewVariables();
+        state[role] = input.value;
+        const txt = document.querySelector<HTMLInputElement>(`input[data-role-text="${role}"]`);
+        if (txt) txt.value = input.value;
+        applyPreview();
       });
     }
 
     for (const input of textInputs) {
-      input.addEventListener("change", (event) => {
-        const role = event.currentTarget?.dataset?.roleText;
-        const value = event.currentTarget?.value;
-        if (!role || !/^#[0-9a-fA-F]{6}$/.test(value || "")) return;
-        state[role] = value;
-        const colorInput = document.querySelector(`input[data-role="${role}"]`);
-        if (colorInput) colorInput.value = value;
-        applyPreviewVariables();
+      input.addEventListener("change", () => {
+        const role = input.dataset.roleText;
+        const val  = input.value;
+        if (!role || !/^#[0-9a-fA-F]{6}$/.test(val)) return;
+        state[role] = val;
+        const col = document.querySelector<HTMLInputElement>(`input[data-role="${role}"]`);
+        if (col) col.value = val;
+        applyPreview();
       });
     }
 
-    applyPreviewVariables();
+    applyPreview();
   </script>
 </BaseLayout>

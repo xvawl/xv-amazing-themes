@@ -5,42 +5,102 @@ import { getAllThemes } from "../lib/theme-model";
 const themes = getAllThemes();
 const baseUrl = import.meta.env.BASE_URL;
 const toBase = (path: string) => `${baseUrl}${path.replace(/^\//, "")}`;
+
+// One color per accent hue, picking the level that suits the variant
+function accentGradientColors(palette: any, variant: string): string[] {
+  const accent = palette?.accent ?? {};
+  const level = variant === "light" ? "400" : "600";
+  const out: string[] = [];
+  for (const hue of Object.values(accent)) {
+    if (hue && typeof hue === "object") {
+      const c = (hue as any)[level] ?? Object.values(hue as object).find(
+        (v): v is string => typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)
+      );
+      if (typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)) out.push(c);
+    }
+  }
+  return out;
+}
+
+// bg + fg + one color per accent hue (variant-appropriate level)
+function swatchColors(palette: any, semanticResolved: any, variant: string): string[] {
+  const bg = semanticResolved?.editor?.background;
+  const fg = semanticResolved?.editor?.foreground;
+  const level = variant === "light" ? "400" : "600";
+  const accent = palette?.accent ?? {};
+  const accents: string[] = [];
+  for (const hue of Object.values(accent)) {
+    if (hue && typeof hue === "object") {
+      const c = (hue as any)[level] ?? Object.values(hue as object).find(
+        (v): v is string => typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)
+      );
+      if (typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)) accents.push(c);
+    }
+  }
+  return [bg, fg, ...accents].filter(
+    (c): c is string => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)
+  );
+}
 ---
-<BaseLayout title="Amazing Themes" description="A theme lab for previewing and iterating on themes.">
-  <div class="grid">
-    <div class="card" style="grid-column: span 12;">
-      <div class="hd">
-        <div>
-          <div class="kicker">Source of truth</div>
-          <h1 class="title">Themes in this repo</h1>
-        </div>
-        <div class="pill mono">Loaded from `themes/**/&#123;light,dark&#125;.yml`</div>
-      </div>
-      <div class="bd" style="padding-top: 10px;">
-        {themes.length === 0 ? (
-          <p class="tagline">No themes found in `themes/`.</p>
-        ) : (
-          <div class="grid" style="gap: 12px;">
-            {themes.map((t) => {
-              const variants = Object.keys(t.variants ?? {});
-              return (
-                <a class="card" style="grid-column: span 6;" href={toBase(`/themes/${t.name}/${variants.includes("light") ? "light" : variants[0]}/`)}>
-                  <div class="bd">
-                    <div class="kicker">Theme</div>
-                    <div class="title">{t.name}</div>
-                    <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
-                      {variants.map((v) => (
-                        <span class="pill">{v}</span>
-                      ))}
-                      <span class="pill mono">playground + downloads</span>
-                    </div>
-                  </div>
-                </a>
-              );
-            })}
-          </div>
+<BaseLayout title="Amazing Themes" description="A theme lab for previewing and iterating on themes." wideHeader={false}>
+  <div class="index-wrap">
+    <div class="index-header">
+      <h1 class="index-title">Themes</h1>
+      <span class="index-meta">
+        {themes.reduce((n, t) => n + Object.keys(t.variants ?? {}).length, 0)} variants &mdash; <code style="font-family: var(--font-mono);">themes/**/*.yml</code>
+      </span>
+    </div>
+
+    {themes.length === 0 ? (
+      <p style="font-family: var(--font-mono); font-size: 14px; color: var(--text-3);">
+        No themes found in <code>themes/</code>.
+      </p>
+    ) : (
+      <div class="themes-grid">
+        {themes.flatMap((t) =>
+          Object.entries(t.variants ?? {}).map(([variantName, v]) => {
+            const editorBg = v?.semanticResolved?.editor?.background ?? "#ffffff";
+            const editorFg = v?.semanticResolved?.editor?.foreground ?? "#222222";
+            const kw       = v?.semanticResolved?.syntax?.keyword   ?? editorFg;
+            const str      = v?.semanticResolved?.syntax?.string    ?? editorFg;
+            const fn       = v?.semanticResolved?.syntax?.function  ?? editorFg;
+            const num      = v?.semanticResolved?.syntax?.number    ?? editorFg;
+            const vari     = v?.semanticResolved?.syntax?.variable  ?? editorFg;
+
+            const accentColors = accentGradientColors(v?.palette ?? {}, variantName);
+            const gradient = accentColors.length > 1
+              ? `linear-gradient(to right, ${accentColors.join(", ")})`
+              : accentColors[0] ?? "var(--border)";
+
+            const swatches = swatchColors(v?.palette ?? {}, v?.semanticResolved ?? {}, variantName);
+
+            return (
+              <a class="theme-card" href={toBase(`/themes/${t.name}/${variantName}/`)} transition:name={`theme-card-${t.name}-${variantName}`}>
+                <div class="tc-gradient" style={`background: ${gradient}; height: 6px;`}></div>
+
+                <div class="tc-preview" style={`background: ${editorBg}; color: ${editorFg};`}>
+                  <pre><code><span style={`color: ${kw}`}>const</span> <span style={`color: ${fn}`}>theme</span> = {`{`}
+  <span style={`color: ${str}`}>"name"</span>: <span style={`color: ${str}`}>"{t.name}"</span>,
+  <span style={`color: ${vari}`}>variant</span>: <span style={`color: ${str}`}>"{variantName}"</span>,
+  <span style={`color: ${vari}`}>colors</span>: <span style={`color: ${num}`}>{swatches.length}</span>,
+{`}`};</code></pre>
+                </div>
+
+                <div class="tc-footer">
+                  <span class="tc-name">{t.name}</span>
+                  <span class={`tc-vpill active`}>{variantName}</span>
+                </div>
+
+                <div class="tc-swatches">
+                  {swatches.map((hex) => (
+                    <span class="tc-dot" style={`background: ${hex};`}></span>
+                  ))}
+                </div>
+              </a>
+            );
+          })
         )}
       </div>
-    </div>
+    )}
   </div>
 </BaseLayout>
